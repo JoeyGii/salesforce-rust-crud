@@ -57,7 +57,7 @@ pub async fn update<'a>(
         .body(hyper::Body::from(crud_body))?;
     let response = client.request(request).await?;
     let status_code = response.status();
-    println!("{status_code}");
+    println!("Update status code: {status_code}");
 
     if status_code.as_u16() > 204 {
         let body_bytes = hyper::body::to_bytes(response.into_body()).await?;
@@ -78,6 +78,11 @@ pub async fn authorize() -> Result<AuthorizationDeserializer, Box<dyn std::error
         .header("Content-Type", "application/x-www-form-urlencoded")
         .body(hyper::Body::from(format_auth_request_body()))?;
     let response = client.request(request).await?;
+    let status_code = response.status();
+    println!("Authorization status code: {status_code}");
+    if status_code.as_u16() > 200 {
+        panic!("Authorization failed. Check all .env variables")
+    }
     let body_bytes = hyper::body::to_bytes(response.into_body()).await?;
     let body_as_string = String::from_utf8(body_bytes.to_vec()).unwrap();
 
