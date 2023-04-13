@@ -1,16 +1,17 @@
 use hyper::Client;
 use hyper::Request;
 use hyper_tls::HttpsConnector;
-use serde::{Deserialize, Serialize};
+mod models {
+    pub mod model;
+}
+use models::model::{AuthorizationDeserializer, KeyValue, ObjectSearchDeserializer};
 use std::collections::HashMap;
 use std::env;
-pub struct KeyValue<'a> {
-    map: HashMap<&'a String, &'a String>,
-}
+
 pub struct UpdateConfig<'a> {
-    sobject: &'a String,
-    sobject_id: &'a String,
-    field_value: HashMap<&'a String, &'a String>,
+    pub sobject: &'a String,
+    pub sobject_id: &'a String,
+    pub field_value: HashMap<&'a String, &'a String>,
 }
 impl<'a> UpdateConfig<'a> {
     pub fn configure(
@@ -25,14 +26,59 @@ impl<'a> UpdateConfig<'a> {
         }
     }
 }
-#[derive(Serialize, Deserialize, Debug)]
-pub struct AuthorizationDeserializer {
-    pub access_token: String,
-    instance_url: String,
-    id: String,
-    token_type: String,
-    signature: String,
-    issued_at: String,
+fn query_formatter(sobj: &str, name: &str) -> String {
+    format!(
+        "{}&sobject={sobj}&{sobj}.fields=id,name&{sobj}.limit=1",
+        name
+    )
+}
+pub async fn get_ids<'a>(
+    secret: &str,
+    sobj: &'a str,
+    sobj_name: &'a str,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let https = HttpsConnector::new();
+    let uri = env::var("uri").expect("Expected a valid uri in the .env file");
+
+    let query = format!(
+        "https://{}/services/data/v57.0/parameterizedSearch/?q={}",
+        uri,
+        &query_formatter(sobj, sobj_name)
+    );
+
+    let client = Client::builder().build::<_, hyper::Body>(https);
+
+    let request = Request::builder()
+        .method("GET")
+        .uri(query)
+        .header("Content-Type", "application/json")
+        .header("Authorization", format!("Bearer {secret}"))
+        .body(hyper::Body::from(""))?;
+    let response = client.request(request).await?;
+    let status_code = response.status();
+    println!("Search status code: {status_code}");
+    let body_bytes = hyper::body::to_bytes(response.into_body()).await?;
+    let body_as_string = String::from_utf8(body_bytes.to_vec()).unwrap();
+    let result_array: Result<ObjectSearchDeserializer, _> = serde_json::from_str(&body_as_string);
+
+    match result_array {
+        Ok(result) => {
+            for (i, r) in result.searchRecords.iter().enumerate() {
+                let i: usize = i + 1;
+                println!("Result {i}: {r:?}")
+            }
+        }
+        Err(e) => {
+            panic!("Not able to deserialize results: {}", e)
+        }
+    }
+
+    if status_code.as_u16() > 204 {
+        println!("{body_as_string}");
+        panic!("Update failed")
+    }
+
+    Ok(body_as_string)
 }
 
 pub async fn update<'a>(
@@ -45,7 +91,7 @@ pub async fn update<'a>(
     let crud_body: String = serde_json::to_string(&body.map).unwrap();
     let https = HttpsConnector::new();
     let client = Client::builder().build::<_, hyper::Body>(https);
-    let uri = env::var("uri").expect("WAHAT");
+    let uri = env::var("uri").expect("Expected a valid uri in the .env file");
     let request = Request::builder()
         .method("PATCH")
         .uri(format!(
