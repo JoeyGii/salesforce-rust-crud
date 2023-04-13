@@ -104,7 +104,6 @@ pub async fn update<'a>(
     let response = client.request(request).await?;
     let status_code = response.status();
     println!("Update status code: {status_code}");
-
     if status_code.as_u16() > 204 {
         let body_bytes = hyper::body::to_bytes(response.into_body()).await?;
         let body_as_string = String::from_utf8(body_bytes.to_vec()).unwrap();
@@ -131,7 +130,6 @@ pub async fn authorize() -> Result<AuthorizationDeserializer, Box<dyn std::error
     }
     let body_bytes = hyper::body::to_bytes(response.into_body()).await?;
     let body_as_string = String::from_utf8(body_bytes.to_vec()).unwrap();
-
     let deserialized_string: AuthorizationDeserializer =
         serde_json::from_str(&body_as_string).unwrap();
     Ok(deserialized_string)

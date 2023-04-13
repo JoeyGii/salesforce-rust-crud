@@ -12,23 +12,25 @@ use clap::Parser;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenv().ok();
     let args = Args::try_parse();
-
     let token: String = authorize().await?.access_token;
-    match args {
-        Ok(a) => {
-            let fields_copied = a.fields;
 
-            let fields_copied = fields_copied
-                .chunks_exact(2)
-                .map(|chunk| (&chunk[0], &chunk[1]))
-                .collect::<HashMap<_, _>>();
-            let config = UpdateConfig::configure(&a.sobj, &a.id, fields_copied);
-            update(&token, config).await?;
-        }
+    match args {
+        Ok(a) => configure_updates(a, &token).await?,
         Err(_) => {
             let get = Get::parse();
             let _ids: String = get_ids(&token, &get.sobj, &get.name).await?;
         }
     }
+    Ok(())
+}
+
+async fn configure_updates(a: Args, token: &String) -> Result<(), Box<dyn std::error::Error>> {
+    let fields_copied = a.fields;
+    let fields_copied = fields_copied
+        .chunks_exact(2)
+        .map(|chunk| (&chunk[0], &chunk[1]))
+        .collect::<HashMap<_, _>>();
+    let config = UpdateConfig::configure(&a.sobj, &a.id, fields_copied);
+    update(&token, config).await?;
     Ok(())
 }
