@@ -28,7 +28,7 @@ impl<'a> UpdateConfig<'a> {
 }
 fn query_formatter(sobj: &str, name: &str) -> String {
     format!(
-        "{}&sobject={sobj}&{sobj}.fields=id,name&{sobj}.limit=1",
+        "{}&sobject={sobj}&{sobj}.fields=id,name&{sobj}.limit=10",
         name
     )
 }
