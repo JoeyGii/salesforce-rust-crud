@@ -7,6 +7,7 @@
 - client_id=(client id of a connected app)
 - client_secret(secret of connected app)
 - uri=(your uri e.g example--example.sandbox.my.salesforce.com)
+- lightning_uri=(e.g https://yourenvironment.lightning.force.com)
 
 run the following command: cargo run -- -s {sObject} -i {id} -f {field api},{value}
 

@@ -13,14 +13,14 @@ pub struct ObjectSearchDeserializer {
 #[allow(non_snake_case)]
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SearchRecords {
-    attributes: Attributes,
-    Id: String,
+    pub attributes: Attributes,
+    pub Id: String,
     Name: String,
 }
 #[derive(Serialize, Deserialize, Debug)]
-struct Attributes {
+pub struct Attributes {
     r#type: String,
-    url: String,
+    pub url: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
