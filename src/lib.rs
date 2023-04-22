@@ -1,19 +1,31 @@
 use hyper::Client;
 use hyper::Request;
 use hyper_tls::HttpsConnector;
-mod models {
+pub mod models {
+    pub mod arg_model;
+    pub mod error_handler;
     pub mod model;
+    pub mod state_model;
 }
+pub mod ui {
+    pub mod ui_render_handler;
+    pub mod ui_text;
+}
+pub mod app_inputs;
+
+use models::arg_model::Args;
+use models::model::SearchRecords;
 use models::model::{AuthorizationDeserializer, KeyValue, ObjectSearchDeserializer};
+use models::state_model::App;
 use std::collections::HashMap;
 use std::env;
-
 mod utils;
 use utils::{
-    CLIENT_ID_ERROR_MSG, CLIENT_SECRET_ERROR_MSG, PASSWORD_ERROR_MSG, SOBJ_ENDPOINT, URI_ERROR_MSG,
+    CLIENT_ID_ERROR_MSG, CLIENT_SECRET_ERROR_MSG, PASSWORD_ERROR_MSG, URI_ERROR_MSG,
     USERNAME_ERROR_MSG,
 };
 
+use crate::models::state_model::Message;
 pub struct UpdateConfig<'a> {
     pub sobject: &'a String,
     pub sobject_id: &'a String,
@@ -32,75 +44,26 @@ impl<'a> UpdateConfig<'a> {
         }
     }
 }
-fn query_formatter(sobj: &str, name: &str) -> String {
-    format!(
-        "{}&sobject={sobj}&{sobj}.fields=id,name&{sobj}.limit=10",
-        name
-    )
-}
 
-fn url_formatter(sobject: &str, id: &str) -> String {
-    format!(
-        "{}{SOBJ_ENDPOINT}{}/{}/view",
-        env::var("lightning_uri").expect("Expected a valid uri in the .env file"),
-        sobject,
-        id
-    )
-}
-pub async fn get_ids<'a>(
-    secret: &str,
-    sobj: &'a str,
-    sobj_name: &'a str,
-) -> Result<String, Box<dyn std::error::Error>> {
-    let https = HttpsConnector::new();
-    let uri = env::var("uri").expect(URI_ERROR_MSG);
-
-    let query = format!(
-        "https://{}/services/data/v57.0/parameterizedSearch/?q={}",
-        &uri,
-        &query_formatter(sobj, sobj_name)
-    );
-
-    let client = Client::builder().build::<_, hyper::Body>(https);
-
-    let request = Request::builder()
-        .method("GET")
-        .uri(query)
-        .header("Content-Type", "application/json")
-        .header("Authorization", format!("Bearer {secret}"))
-        .body(hyper::Body::from(""))?;
-    let response = client.request(request).await?;
-    let status_code = response.status();
-    println!("Search status code: {status_code}");
-    let body_bytes = hyper::body::to_bytes(response.into_body()).await?;
-    let body_as_string = String::from_utf8(body_bytes.to_vec()).unwrap();
-    let result_array: Result<ObjectSearchDeserializer, _> = serde_json::from_str(&body_as_string);
-
-    match result_array {
-        Ok(mut result) => {
-            for (i, r) in result.searchRecords.iter_mut().enumerate() {
-                let id = &r.Id;
-                r.attributes.url = url_formatter(&sobj, id);
-                let i: usize = i + 1;
-                println!("Result {i}: {r:?}")
-            }
-        }
-        Err(e) => {
-            panic!("Not able to deserialize results: {}", e)
-        }
-    }
-
-    if status_code.as_u16() > 204 {
-        println!("{body_as_string}");
-        panic!("Update failed")
-    }
-
-    Ok(body_as_string)
+pub async fn configure_updates(
+    a: Args,
+    token: &String,
+    app: &mut App,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fields_copied = a.fields;
+    let fields_copied = fields_copied
+        .chunks_exact(2)
+        .map(|chunk| (&chunk[0], &chunk[1]))
+        .collect::<HashMap<_, _>>();
+    let config = UpdateConfig::configure(&a.sobj, &a.id, fields_copied);
+    update(&token, config, app).await?;
+    Ok(())
 }
 
 pub async fn update<'a>(
     secret: &str,
     config: UpdateConfig<'a>,
+    app: &mut App,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let body: KeyValue = KeyValue {
         map: config.field_value,
@@ -120,16 +83,125 @@ pub async fn update<'a>(
         .body(hyper::Body::from(crud_body))?;
     let response = client.request(request).await?;
     let status_code = response.status();
-    println!("Update status code: {status_code}");
     if status_code.as_u16() > 204 {
         let body_bytes = hyper::body::to_bytes(response.into_body()).await?;
         let body_as_string = String::from_utf8(body_bytes.to_vec()).unwrap();
         println!("{body_as_string}");
         panic!("Update failed")
-    }
+    } else {
+        let messages: Vec<Message> = vec![
+            Message {
+                body: format!("Update Success"),
+            },
+            Message {
+                body: format!("{:?} on {}", body.map, config.sobject),
+            },
+        ];
 
+        app.messages = messages;
+    }
     Ok(())
 }
+
+fn query_formatter(sobj: &str, name: &str) -> String {
+    format!(
+        "{}&sobject={sobj}&{sobj}.fields=id,name&{sobj}.limit=10",
+        name
+    )
+}
+pub async fn describe_sobject_fields(
+    token: &str,
+    sobj: &str,
+    id: &str,
+    field_letter: &str,
+) -> Result<Vec<Message>, Box<dyn std::error::Error>> {
+    let field_filter: char = field_letter.chars().next().unwrap();
+    let https = HttpsConnector::new();
+    let uri = env::var("uri").expect(URI_ERROR_MSG);
+
+    let query = format!(
+        "https://{}/services/data/v57.0/sobjects/{}/{}",
+        &uri, sobj, id
+    );
+
+    let client = Client::builder().build::<_, hyper::Body>(https);
+
+    let request = Request::builder()
+        .method("GET")
+        .uri(query)
+        .header("Content-Type", "application/json")
+        .header("Authorization", format!("Bearer {token}"))
+        .body(hyper::Body::from(""))?;
+    let response = client.request(request).await?;
+
+    let body_bytes = hyper::body::to_bytes(response.into_body()).await?;
+    let body_as_string = String::from_utf8(body_bytes.to_vec()).unwrap();
+
+    let body_as_string: Vec<&str> = body_as_string.split(",").collect();
+    let mut map: HashMap<&str, &str> = HashMap::new();
+    let _i: Vec<_> = body_as_string
+        .iter()
+        .map(|kv| {
+            let k: Vec<&str> = kv.split(":").collect();
+            if k.len() > 1 {
+                map.insert(k[0], k[1]);
+            }
+        })
+        .collect();
+
+    let mut messages: Vec<Message> = Vec::new();
+    let _i: Vec<_> = map
+        .keys()
+        .map(|k| {
+            if k.chars().nth(1).unwrap() == field_filter {
+                let message = Message {
+                    body: k.to_string(),
+                };
+                messages.push(message);
+            }
+        })
+        .collect();
+
+    Ok(messages)
+}
+
+pub async fn get_ids_cli<'a>(
+    secret: &str,
+    sobj: &'a str,
+    sobj_name: &'a str,
+) -> Result<Vec<SearchRecords>, Box<dyn std::error::Error>> {
+    let https = HttpsConnector::new();
+    let uri = env::var("uri").expect(URI_ERROR_MSG);
+
+    let query = format!(
+        "https://{}/services/data/v57.0/parameterizedSearch/?q={}",
+        &uri,
+        &query_formatter(sobj, sobj_name)
+    );
+
+    let client = Client::builder().build::<_, hyper::Body>(https);
+
+    let request = Request::builder()
+        .method("GET")
+        .uri(query)
+        .header("Content-Type", "application/json")
+        .header("Authorization", format!("Bearer {secret}"))
+        .body(hyper::Body::from(""))?;
+    let response = client.request(request).await?;
+    let body_bytes = hyper::body::to_bytes(response.into_body()).await?;
+    let body_as_string = String::from_utf8(body_bytes.to_vec()).unwrap();
+    let result_array: Result<ObjectSearchDeserializer, _> = serde_json::from_str(&body_as_string);
+
+    match result_array {
+        Ok(result) => {
+            return Ok(result.searchRecords);
+        }
+        Err(e) => {
+            panic!("Not able to deserialize results: {}", e)
+        }
+    }
+}
+
 pub async fn authorize() -> Result<AuthorizationDeserializer, Box<dyn std::error::Error>> {
     let https = HttpsConnector::new();
     let client = Client::builder().build::<_, hyper::Body>(https);
@@ -141,7 +213,7 @@ pub async fn authorize() -> Result<AuthorizationDeserializer, Box<dyn std::error
         .body(hyper::Body::from(format_auth_request_body()))?;
     let response = client.request(request).await?;
     let status_code = response.status();
-    println!("Authorization status code: {status_code}");
+    // println!("Authorization status code: {status_code}");
     if status_code.as_u16() > 200 {
         panic!("Authorization failed. Check all .env variables")
     }

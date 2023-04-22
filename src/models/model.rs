@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
+use std::collections::HashMap;
 #[allow(dead_code)]
 pub struct KeyValue<'a> {
     pub map: HashMap<&'a String, &'a String>,
@@ -11,15 +11,15 @@ pub struct ObjectSearchDeserializer {
     pub searchRecords: Vec<SearchRecords>,
 }
 #[allow(non_snake_case)]
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct SearchRecords {
     pub attributes: Attributes,
     pub Id: String,
-    Name: String,
+    pub Name: String,
 }
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct Attributes {
-    r#type: String,
+    pub r#type: String,
     pub url: String,
 }
 

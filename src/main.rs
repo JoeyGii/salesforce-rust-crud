@@ -1,36 +1,47 @@
 use dotenv::dotenv;
-use sf_updates::{authorize, get_ids, update, UpdateConfig};
-use std::collections::HashMap;
-mod models {
-    pub mod arg_model;
-    pub mod model;
-}
-use crate::models::arg_model::{Args, Get};
+use sf_updates::models::state_model::App;
 
-use clap::Parser;
+mod models {
+
+    pub mod error_handler;
+}
+
+use sf_updates::app_inputs;
+
+use std::{
+    io,
+    sync::{Arc, Mutex},
+};
+use tui::{backend::CrosstermBackend, Terminal};
+extern crate preferences;
+use crossterm::{
+    event::{DisableMouseCapture, EnableMouseCapture},
+    execute,
+    terminal::{enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+};
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenv().ok();
-    let args = Args::try_parse();
-    let token: String = authorize().await?.access_token;
 
-    match args {
-        Ok(a) => configure_updates(a, &token).await?,
-        Err(_) => {
-            let get = Get::parse();
-            let _ids: String = get_ids(&token, &get.sobj, &get.name).await?;
-        }
+    enable_raw_mode()?;
+    let mut stdout = io::stdout();
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    let backend = CrosstermBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
+    let app = Arc::new(Mutex::new(App::default()));
+    let res = app_inputs::run_app(&mut terminal, app).await;
+
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        DisableMouseCapture
+    )?;
+    terminal.show_cursor()?;
+
+    if let Err(err) = res {
+        println!("{:?}", err)
     }
-    Ok(())
-}
 
-async fn configure_updates(a: Args, token: &String) -> Result<(), Box<dyn std::error::Error>> {
-    let fields_copied = a.fields;
-    let fields_copied = fields_copied
-        .chunks_exact(2)
-        .map(|chunk| (&chunk[0], &chunk[1]))
-        .collect::<HashMap<_, _>>();
-    let config = UpdateConfig::configure(&a.sobj, &a.id, fields_copied);
-    update(&token, config).await?;
     Ok(())
 }
