@@ -76,7 +76,7 @@ pub async fn run_app<B: Backend>(
                     KeyCode::Backspace => {
                         app.input.pop();
                     }
-                    KeyCode::Esc => (),
+                    KeyCode::Esc => return Ok(()),
                     _ => {}
                 }
             }

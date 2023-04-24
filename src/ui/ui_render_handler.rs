@@ -1,4 +1,6 @@
+use super::ui_text::{editing_text, render_copyright, render_typing};
 use crate::models::state_model::{App, InputMode};
+use crate::utils;
 use std::vec;
 use tui::{
     backend::Backend,
@@ -9,8 +11,6 @@ use tui::{
     Frame,
 };
 use unicode_width::UnicodeWidthStr;
-
-use super::ui_text::{editing_text, render_copyright, render_typing};
 
 //chunk array
 // 0 = top text
@@ -106,16 +106,44 @@ pub fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
                 .fg(Color::LightCyan)
                 .add_modifier(Modifier::BOLD),
         );
-
+    let help_messages: Vec<ListItem> = vec![
+        utils::SEARCH_MESSAGE,
+        utils::UPDATE_MESSAGE,
+        utils::FIELDS_MESSAGE,
+    ]
+    .iter()
+    .map(|m| {
+        // let m: String = serde_json::from_str(&m.body).unwrap();
+        let content = vec![Spans::from(Span::raw(format!("{}", m)))];
+        ListItem::new(content)
+    })
+    .collect();
+    let help_messages: List = List::new(help_messages)
+        .style(Style::default().fg(Color::Blue))
+        .block(
+            Block::default()
+                .style(Style::default().fg(Color::Blue))
+                .borders(Borders::ALL)
+                .title("Help"),
+        )
+        .highlight_style(
+            Style::default()
+                .fg(Color::LightCyan)
+                .add_modifier(Modifier::BOLD),
+        );
     let middle_chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Min(0), Constraint::Length(50)].as_ref())
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
         .split(chunks[2]);
+    let column = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
+        .split(middle_chunks[1]);
     match app.input_mode {
         InputMode::Editing => {
             f.render_stateful_widget(results, middle_chunks[0], &mut app.results.state);
-            f.render_widget(messages, middle_chunks[1]);
-            // f.render_stateful_widget(connections, middle_chunks[1], &mut app.connections.state);
+            f.render_widget(messages, column[0]);
+            f.render_widget(help_messages, column[1]);
         }
     }
 

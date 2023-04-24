@@ -22,12 +22,6 @@ impl Message {
         }
     }
     pub fn configure_message(app: &mut App) -> Result<Message, CustomError> {
-        if app.input.len() > 70 {
-            return Err(CustomError {
-                error_status_code: 400,
-                error_message: "Message body is too long".to_string(),
-            });
-        }
         let message_body: String = app.input.drain(..).collect();
 
         if message_body.len() > 0 {
