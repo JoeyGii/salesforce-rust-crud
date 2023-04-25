@@ -51,6 +51,7 @@ pub struct App {
     /// Current value of the input box
     pub input: String,
     pub messages: Vec<Message>,
+    pub error_msg: UserErrorTypes,
     pub results: StatefulList<SearchRecords>,
     pub input_mode: InputMode,
     /// History of recorded messages

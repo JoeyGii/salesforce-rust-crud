@@ -53,7 +53,9 @@ impl UserError {
         }
     }
 }
+#[derive(Debug, Default)]
 pub enum UserErrorTypes {
+    #[default]
     GoodToGo,
     UsernameHasSpaces,
     UsernameIsBlank,

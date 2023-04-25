@@ -12,13 +12,13 @@ pub mod ui {
     pub mod ui_text;
 }
 pub mod app_inputs;
-
 use models::arg_model::Args;
 use models::model::SearchRecords;
 use models::model::{AuthorizationDeserializer, KeyValue, ObjectSearchDeserializer};
 use models::state_model::App;
 use std::collections::HashMap;
 use std::env;
+use std::{error::Error, ffi::OsString, io};
 mod utils;
 use utils::{
     CLIENT_ID_ERROR_MSG, CLIENT_SECRET_ERROR_MSG, PASSWORD_ERROR_MSG, URI_ERROR_MSG,
@@ -26,6 +26,7 @@ use utils::{
 };
 
 use crate::models::state_model::Message;
+
 pub struct UpdateConfig<'a> {
     pub sobject: &'a String,
     pub sobject_id: &'a String,
@@ -109,7 +110,58 @@ fn query_formatter(sobj: &str, name: &str) -> String {
         name
     )
 }
-pub async fn describe_sobject_fields(
+pub async fn describe_fields(
+    token: &str,
+    sobj: &str,
+    id: &str,
+) -> Result<Vec<Message>, Box<dyn std::error::Error>> {
+    let https = HttpsConnector::new();
+    let uri = env::var("uri").expect(URI_ERROR_MSG);
+
+    let query = format!(
+        "https://{}/services/data/v57.0/sobjects/{}/{}",
+        &uri, sobj, id
+    );
+
+    let client = Client::builder().build::<_, hyper::Body>(https);
+
+    let request = Request::builder()
+        .method("GET")
+        .uri(query)
+        .header("Content-Type", "application/json")
+        .header("Authorization", format!("Bearer {token}"))
+        .body(hyper::Body::from(""))?;
+    let response = client.request(request).await?;
+
+    let body_bytes = hyper::body::to_bytes(response.into_body()).await?;
+    let body_as_string = String::from_utf8(body_bytes.to_vec()).unwrap();
+
+    let body_as_string: Vec<&str> = body_as_string.split(",").collect();
+    let mut map: HashMap<&str, &str> = HashMap::new();
+    let _i: Vec<_> = body_as_string
+        .iter()
+        .map(|kv| {
+            let k: Vec<&str> = kv.split(":").collect();
+            if k.len() > 1 {
+                map.insert(k[0], k[1]);
+            }
+        })
+        .collect();
+
+    let mut messages: Vec<Message> = Vec::new();
+    let _i: Vec<_> = map
+        .keys()
+        .map(|k| {
+            let message = Message {
+                body: k.to_string().replace('"', ""),
+            };
+            messages.push(message);
+        })
+        .collect();
+
+    Ok(messages)
+}
+pub async fn describe_filtered_fields(
     token: &str,
     sobj: &str,
     id: &str,
@@ -155,7 +207,7 @@ pub async fn describe_sobject_fields(
         .map(|k| {
             if k.chars().nth(1).unwrap() == field_filter {
                 let message = Message {
-                    body: k.to_string(),
+                    body: k.to_string().replace('"', ""),
                 };
                 messages.push(message);
             }
@@ -239,4 +291,18 @@ fn format_auth_request_body() -> String {
                   {pw}"
     );
     body
+}
+
+pub fn export_fields(fields: Vec<String>) -> Result<(), Box<dyn Error>> {
+    let file_path = get_first_arg();
+    let mut wtr = csv::Writer::from_path(file_path)?;
+    wtr.write_record(fields)?;
+    wtr.flush()?;
+    Ok(())
+}
+/// Returns the first positional argument sent to this process. If there are no
+/// positional arguments, then this returns an error.
+fn get_first_arg() -> OsString {
+    let path: OsString = "/Users/joegillick/fields.csv".to_string().into();
+    path
 }
